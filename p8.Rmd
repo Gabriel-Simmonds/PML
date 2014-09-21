@@ -1,0 +1,79 @@
+---
+title: "Coursera: Practical Machine Learning"
+output: html_document
+---
+###Summary
+In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants asked to perform barbell lifts correctly and incorrectly in 5 different ways. The goal of this project is to predict the manner in which these exercises were carried out. This is the "classe" variable in the training set. Use of any of the other variables in the dataset is permitted to predict this. This report describes how the model was built, how cross validation was used, what the expected out of sample error is. The prediction model is finally used to predict 20 different test cases.
+
+The original data for this project came from this location:
+http://groupware.les.inf.puc-rio.br/har 
+
+###Preparation of Data
+First, the appropriate packages are loaded, then the training and testing data are read from CSV files in the working directory into "train" and "test" dataframes, with certain strings interpreted as NA strings. The "train" dataframe is then processed to remove the "cvtd_timestamp", "user_name" and "X" columns of data, predictors with near zero variance, and those columns comprised of NA strings.
+```{r warning = FALSE}
+library(lattice)
+library(ggplot2)
+library(caret)
+library(rpart)
+library(e1071)
+library(randomForest)
+train <- read.csv("pml-training.csv", na.strings = c("#DIV/0!", "NA", ""))
+test <- read.csv("pml-testing.csv", na.strings = c("#DIV/0!", "NA", ""))
+train <- train[, -grep("cvtd_timestamp|user_name|X", names(train))]
+train <- train[, -nearZeroVar(train)]
+myNA <- apply(train, 2, function(x){sum(is.na(x))})
+train <- train[, which(myNA == 0)]
+```
+
+###Model Construction and Predictions
+####Part 1
+A seed is set, and a data partition is created based on the "classe" variable in the "train" dataframe. The data partition is used to sub-divide the "train" dataframe into training and testing subsets which can be used to validate models before application to the full "test" dataframe. 75% of the original "train" dataframe will be assigned to the training subset, and 25% to the testing subset. This ratio was chose to give sufficient information in the training subset to create a valid model.
+```{r partition}
+set.seed(707)
+part <- createDataPartition(train$classe, p = 0.75, list = FALSE)
+trainTrain <- train[part, ]
+testTrain <- train[-part, ]
+```
+
+####Part 2
+An rpart model "RP" is created based on the training subset of the "train" dataframe. The results of this model are checked but this model only has 52.55% accuracy, and so a random forest model "RF" with 300 trees is then created based on the same training subset of the "train" dataframe. 300 trees were chosen as if the observations are large in number, but the number of trees is small, then some observations may not be predicted at all. This model has the maximum  accuracy of 100%!
+```{r modelPredictionA&B}
+RP <- train(classe ~ ., method = "rpart", data = trainTrain)
+RPPredict <- predict(RP, trainTrain)
+postResample(RPPredict, trainTrain$classe)
+confusionMatrix(RPPredict, trainTrain$classe)
+
+RF <- randomForest(classe ~ ., ntree = 300, data = trainTrain)
+RFPredict <- predict(RF, trainTrain)
+postResample(RFPredict, trainTrain$classe)
+confusionMatrix(RFPredict, trainTrain$classe)
+```
+
+####Part 3
+A prediction for cross-validation purposes is made on the testing subset of the "train" dataframe using the "RF" random forest model created earlier. This prediction and the "classe" variables of the test subset of the "train" dataframe are used to calculate the overall accuracy and the kappa of the two factors, as well as the confusion matrix which cross-tabulates the two sets of values with associated statistics.
+
+The model prediction of the "classe" variables in the test subset of the "train" dataframe results in a 99.90% accuracy. This is slightly worse than the 100% prediction accuracy on the train subset of the "train" data, and is entirely expected. Predictions on testing sets usually are worse than on training sets.
+
+Thus the expected out-of-sample error is 100% - 99.90% = 0.1%.
+```{r modelPredictionC}
+rfPredict <- predict(RF, testTrain)
+postResample(rfPredict, testTrain$classe)
+confusionMatrix(rfPredict, testTrain$classe)
+```
+
+####Part 4
+A prediction is finally made using the "RF" random forest model on the full "test" data. This results in a vector with 20 members which is the equivalent of the "classe" variables in the "train" data. This "answers" data is finally output to the working directory as a set of 20 individual .txt files. One for each of the 20 members of the prediction.
+```{r testPrediction}
+answers <- predict(RF, test)
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, col.names = FALSE)
+    }
+}
+pml_write_files(answers)
+```
+
+###Conclusion
+The "RF" random forest model appears to be a valid model as the 20 members of the "answers" prediction were correct as defined on the Coursera project submission webpage, but have not been listed here for reasons of security.
